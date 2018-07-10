@@ -1,0 +1,111 @@
+#
+# System Spine Config File
+# Peter Shuleski
+# peter.shuleski@t-mobile.com
+#
+
+contact: TierII IP Support 1-866-783-9557 Option 4
+location: 4405 Grant Road, East Wenatchee, WA 98802
+
+banner: |
+  T-Mobile USA, Inc. 2014 (C) All rights reserved.
+  All use subject to applicable license agreements.
+  This system is for the use of authorized users only. Everyone (Users) using
+  this system consents to the terms and conditions hereunder. The use is for
+  T-Mobile USA, Inc. (TMUS) authorized users only, and all use must be for TMUS
+  business only. All data, content, software and other information (Data) on the
+  system is owned or licensed by TMUS. Users should not disclose or otherwise use
+  the Data except as expressly authorized by TMUS. No Data may be shared outside
+  of TMUS systems unless expressly authorized by TMUS. TMUS may monitor Users
+  usage. Users should contact T-Mobile National Help Desk at 877-878-7326 with
+  any questions. Users in violation of these terms and conditions are subject to
+  disciplinary or other action.
+
+
+sw_version: 7.0(3)I5(2)
+
+features:
+  - { feature:  bash-shell, state: disabled }
+  - { feature:  nxapi, state: enabled}
+  - { feature:  tacacs+, state: enabled }
+  - { feature:  scheduler, state: enabled }
+  - { feature:  ospf, state: disabled }
+  - { feature:  bgp, state: enabled }
+  - { feature:  pim, state: enabled }
+  - { feature:  interface-vlan, state: disabled }
+  - { feature:  hsrp, state: disabled }
+  - { feature:  udld, state: disabled }
+  - { feature:  lacp, state: disabled }
+  - { feature:  dhcp, state: disabled }
+  - { feature:  lldp, state: enabled }
+  - { feature:  bfd, state: enabled }
+  - { feature:  vn-segment-vlan-based, state: disabled }
+  - { feature:  "nv overlay", state: enabled }
+  - { feature: telnet, state: disabled }
+  - { feature: vpc, state: disabled }
+  - { feature: sflow, state: enabled }
+  - { feature: "sla sender", state: disabled }
+  - { feature: scp-server, state: enabled }
+
+name_servers:
+  - { server: 5.232.32.63, vrf: management }
+
+timezone: "GMT 0 0"
+
+ntp_servers:
+  - { server: 10.251.4.4, state: present }
+  - { server: 10.251.4.5, state: present }
+  - { server: 10.252.4.4, state: present }
+  - { server: 10.252.4.5, state: present }
+
+domain: t-mobile.net
+
+logging:
+  - { server: 10.251.7.72, log_level: 5, vrf: management, facility: kern, source: mgmt0 }
+
+snmp_hosts:
+  - { server: 10.251.6.72, vrf: management, community: HPtraps01, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.252.9.18, vrf: management, community: HPtraps01, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.253.77.71, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.253.77.72, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.255.51.25, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.255.51.26, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: absent }
+  - { server: 10.253.77.67, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: present }
+  - { server: 10.253.77.68, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: present }
+  - { server: 10.255.51.21, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: present }
+  - { server: 10.255.51.22, vrf: management, community: Re4D0nLy5TrInG, version: v2c, int: mgmt0, state: present }
+
+snmp_traps:
+#  - { state: enabled, group: bgp }
+  - { state: enabled, group: bridge }
+  - { state: enabled, group: stpx }
+  - { state: enabled, group: callhome }
+  - { state: enabled, group: cfs }
+  - { state: enabled, group: hsrp }
+  - { state: enabled, group: upgrade }
+  - { state: enabled, group: feature-control }
+  - { state: enabled, group: config }
+  - { state: enabled, group: snmp }
+
+acls:
+#  - { name: SNMP-RO-NMNET, remark: '+----------------------------------------------------------------------', seq 10, action: remark}
+#  - { name: SNMP-RO-NMNET, remark: '+ SNMP Read-Only Acesss (NMNET)', seq 20, action: remark}
+#  - { name: SNMP-RO-NMNET, remark: '+----------------------------------------------------------------------', seq 30, action: remark}
+  - { name: SNMP-RO-NMNET, src: 5.0.0.0/8, dest: any, seq: 40, action: permit, proto: ip, state: present }
+  - { name: SNMP-RO-NMNET, src: 10.245.0.0/16, dest: any, seq: 50, action: permit, proto: ip, state: present }
+  - { name: SNMP-RO-NMNET, src: 10.248.0.0/13, dest: any, seq: 60, action: permit, proto: ip, state: present }
+#  - { name: SNMP-RW-NMNET, remark: '+----------------------------------------------------------------------', seq 10, action: remark, state: present}
+#  - { name: SNMP-RW-NMNET, remark: '+ SNMP Read-Write Acesss (NMNET)', seq: 20, action: remark, state: present}
+#  - { name: SNMP-RW-NMNET, remark: '+----------------------------------------------------------------------', seq 30, action: remark, state: present}
+#  - { name: SNMP-RW-NMNET, src: 5.0.0.0/8, dest: any, seq: 40, action: permit, proto: ip, state: present }
+#  - { name: SNMP-RW-NMNET, src: 10.245.0.0/16, dest: any, seq: 50, action: permit, proto: ip, state: present }
+#  - { name: SNMP-RW-NMNET, src: 10.248.0.0/13, dest: any, seq: 60, action: permit, proto: ip, state: present }
+  - { name: ssh-only, seq: 10, action: permit, src: 5.0.0.0/8, dest: any, dest_port1: 22, dest_port_op: eq, proto: tcp, state: present }
+  - { name: ssh-only, seq: 20, action: permit, src: 10.245.0.0/16, dest: any, dest_port1: 22, dest_port_op: eq, proto: tcp, state: present }
+  - { name: ssh-only, seq: 30, action: permit, src: 10.248.0.0/13, dest: any,  dest_port1: 22, dest_port_op: eq, proto: tcp, state: present }
+  # NTP ACLs
+  - { name: ntp-peer, seq: 10, action: deny, src: any, dest: any, proto: ip, state: present }
+  - { name: ntp-serve-query, seq: 10, action: permit, src: 10.251.4.4/32, dest: any, proto: udp, state: present }
+  - { name: ntp-serve-query, seq: 20, action: permit, src: 10.251.4.5/32, dest: any, proto: udp, state: present }
+  - { name: ntp-serve-query, seq: 30, action: permit, src: 10.252.4.4/32, dest: any, proto: udp, state: present }
+  - { name: ntp-serve-query, seq: 40, action: permit, src: 10.252.4.4/32, dest: any, proto: udp, state: present }

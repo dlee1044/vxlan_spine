@@ -1,0 +1,51 @@
+route-map SPINE-TO-LEAF-V4 permit 10
+  no set ipv6 next-hop unchanged
+  set ip next-hop unchanged
+route-map SPINE-TO-LEAF-V6 permit 10
+  set ipv6 next-hop unchanged
+route-map SPINE-TO-LEAF-EVPN permit 10
+  set ipv6 next-hop unchanged
+  set ip next-hop unchanged
+
+router bgp {{ bgp_asn }}
+  router-id {{ bgp_router_id }}
+  log-neighbor-changes
+  timers bgp 3 9
+  address-family ipv4 unicast
+    {% for network in l3_interfaces if network.vrf is undefined%}
+    network {{ network.addr|ipaddr('network/prefix') }}
+    {% endfor %}
+    {% for network in loopbacks if network.vrf is undefined %}
+    network {{ network.addr|ipaddr('network/prefix') }}
+    {% endfor %}
+    redistribute direct route-map BGP-REDIST-CONNECTED
+    maximum-paths 6
+    maximum-paths ibgp 6
+    additional-paths send
+    additional-paths receive
+  address-family ipv6 unicast
+    redistribute direct route-map BGP-REDIST-CONNECTED
+    maximum-paths 6
+    maximum-paths ibgp 6
+    additional-paths send
+    additional-paths receive
+  address-family l2vpn evpn
+    retain route-target all
+!
+  template peer LEAF
+    bfd
+    address-family ipv4 unicast
+      disable-peer-as-check
+      send-community both
+      maximum-prefix 5000 75 warning-only
+      route-map SPINE-TO-LEAF-V4 out
+    address-family ipv6 unicast
+      disable-peer-as-check
+      send-community both
+      maximum-prefix 5000 75 warning-only
+      route-map SPINE-TO-LEAF-V6 out
+    address-family l2vpn evpn
+      route-map SPINE-TO-LEAF-EVPN out
+      disable-peer-as-check
+      send-community both
+      maximum-prefix 5000 75 warning-only

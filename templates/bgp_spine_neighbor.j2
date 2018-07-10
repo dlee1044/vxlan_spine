@@ -1,0 +1,4 @@
+router bgp {{ bgp_asn }}
+  neighbor {{ item.neighbor }} remote-as {{ item.remote_as }}
+    bfd
+    inherit peer LEAF

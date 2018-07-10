@@ -1,0 +1,505 @@
+#
+# Generic Spine Playbook
+# Peter Shuleski
+# peter.shuleski@t-mobile.com
+#
+
+    - name: collect output from nxos device
+      nxos_command:
+        commands:
+          - show version
+        provider: "{{ nxos_cli }}"
+      register: output
+
+    - name: Set hostname fact
+      set_fact:
+        running_hostname: "{{ output.stdout[0] | regex_findall('\\s+Device name:\\s+(\\S+)') | first }}"
+
+    - name: Set SerialNo fact
+      set_fact:
+        running_serial: "{{ output.stdout[0] | regex_findall('\\s+Processor Board ID\\s+(\\S+)') | first }}"
+
+    - debug:
+        msg:
+          - "Running: {{ running_serial }}"
+          - "Configured: {{ SerialNo }}"
+          - "Running Hostname: {{ running_hostname }}"
+          - "Configured Hostname: {{ hostname }}"
+
+    - assert:
+        that:
+          - running_serial  == "{{ SerialNo }}"
+        msg: "Device Serial Number doesnt Match!  Running: {{ running_serial }} Configured: {{ SerialNo }}"
+
+    - assert:
+        that:
+          - running_hostname == "{{ hostname }}"
+        msg: "Device hostname doesnt Match config! Running: {{ running_hostname }} Configured: {{ hostname }}"
+
+    - name: Set SW version fact
+      set_fact:
+        running_sw_version: "{{ output.stdout[0] | regex_findall('\\s+System version:\\s+(\\S+)') | first }}"
+
+    - name: Backing up Config
+      nxos_config:
+       backup: yes
+       provider: "{{ nxos_cli }}"
+
+#    - name: Generate POAP config
+#      nxos_config:
+#
+#       provider: "{{ nxos_provider }}"
+#      with_items:
+#       - " {{ mgmt }}
+
+#    - name: SET MGMT VRF
+#      nxos_vrf_interface:
+#        interface: "{{ item.interface }}"
+#        vrf: "{{ item.vrf }}"
+#        provider: "{{ nxos_provider }}"
+#      with_items: "{{ mgmt }}"
+
+#    - name: SET MGMT INT IP
+#      nxos_ip_interface:
+#        interface: "{{ item.interface }}"
+#        addr: "{{ item.addr }}"
+#        mask: "{{ item.mask }}"
+#        provider: "{{ nxos_provider }}"
+#      with_items: "{{ mgmt }}"
+
+#    - name: SET MGMT Route
+#       nxos_static_route:
+#         prefix: "0.0.0.0/0"
+#         next_hop: "{{ item.gateway}}
+#         route_name: management_dgw
+#         vrf: "{{ item.vrf }}
+#       with_items: "{{ mgmt }}"
+
+    - name: Enable NXAPI
+      nxos_nxapi:
+        state: present
+        https: yes
+        https_port: 443
+        http: no
+        http_port : 80
+        provider: "{{ nxos_cli }}"
+
+    - name: ENABLE NECESSARY FEATURES
+      nxos_feature:
+        feature: "{{ item.feature }}"
+        provider: "{{ nxos_provider }}"
+        state: "{{ item.state }}"
+      with_items: "{{ features }}"
+
+    - name: ENABLE NV OVERLAY EVPN
+      nxos_evpn_global:
+        nv_overlay_evpn: true
+        provider: "{{ nxos_provider }}"
+
+    - name: SET Banner
+      nxos_banner:
+        banner: motd
+        text: "{{ banner }}"
+        state: present
+        provider: "{{ nxos_cli }}"
+
+    - name: SET DOMAIN NAME
+      nxos_config:
+        lines:
+          - 'ip domain-name {{ domain }}'
+        provider: "{{ nxos_provider }}"
+
+    - name: DNS SERVER HOST CONFIGURATION
+      nxos_config:
+        lines: ['ip name-server {{ item.server }} use-vrf {{ item.vrf }}']
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ name_servers }}"
+
+    - name: set system MTU
+      nxos_system:
+       system_mtu: 9216
+       provider: "{{ nxos_provider }}"
+
+    - name: Set Timezone
+      nxos_config:
+        lines:
+          - 'clock timezone {{ timezone }}'
+        provider: "{{ nxos_provider }}"
+
+    - name: Create NTP ACLs
+      nxos_acl:
+        name: "{{ item.name }}"
+        seq: "{{ item.seq }}"
+        action: "{{ item.action }}"
+        proto: "{{ item.proto }}"
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ acls }}"
+      when: item.name == "ntp-peer" or item.name == "ntp-serve-query"
+
+    - name: set NTP config
+      nxos_ntp:
+        server: "{{ item.server }}"
+        source_int: "{{ mgmt.0.interface }}"
+        state: "{{ item.state }}"
+        vrf_name: "{{ mgmt.0.vrf }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ ntp_servers }}"
+      when: item.state == "present"
+
+    - name: Set NTP ACL
+      nxos_config:
+        lines:
+          - 'ntp access-group peer ntp-peer'
+          - 'ntp access-group serve ntp-serve-query'
+          - 'ntp access-group query-only ntp-serve-query'
+        provider: "{{ nxos_provider }}"
+      ignore_errors: True
+
+    - name: Logging Configuration
+      nxos_config:
+        lines:
+          - 'logging server {{ item.server }} {{ item.log_level }} use-vrf {{ item.vrf }} facility {{ item.facility }}'
+          - 'logging source-interface {{ item.source }}'
+          - 'no logging console'
+          - 'logging event trunk-status enable'
+          - 'logging event link-status default'
+          - 'logging level ethpm link-up error'
+          - 'logging level ethpm link-down error'
+          - 'logging timestamp milliseconds'
+          - 'logging event trunk-status enable'
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ logging }}"
+
+    - name: Ensure snmp location is configured
+      nxos_snmp_location:
+        location: "{{ location }}"
+        state: present
+        provider: "{{ nxos_provider }}"
+
+    - name: Ensure snmp contact is configured
+      nxos_snmp_contact:
+        contact: "{{ contact }}"
+        state: present
+        provider: "{{ nxos_provider }}"
+
+    - name: Create SNMP ACLs
+      nxos_acl:
+        state: "{{ item.state }}"
+        name: "{{ item.name }}"
+        seq: "{{ item.seq }}"
+        action: "{{ item.action }}"
+        proto: "{{ item.proto }}"
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ acls }}"
+      when: item.proto == "ip" and item.src_port1 is undefined
+
+    - name: Create SSH ACLs
+      nxos_acl:
+        state: "{{ item.state }}"
+        name: "{{ item.name }}"
+        seq: "{{ item.seq }}"
+        action: "{{ item.action }}"
+        proto: "{{ item.proto }}"
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        dest_port1: "{{ item.dest_port1 }}"
+        dest_port_op: "{{ item.dest_port_op }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ acls }}"
+      when: item.name == "ssh-only" and item.src_port1 is undefined
+
+# Module throwing errors
+    - name: Create SNMP RO Community
+      nxos_snmp_community:
+        group: network-operator
+        acl: SNMP-RO-NMNET
+        community: Re4D0nLy5TrInG
+        state: present
+        provider: "{{ nxos_provider }}"
+
+    - name: Create SNMP Hosts
+      nxos_snmp_host:
+        community: "{{ item.community }}"
+        snmp_host: "{{ item.server }}"
+        snmp_type: trap
+        vrf: "{{ item.vrf }}"
+        src_intf: mgmt0
+        state: "{{ item.state }}"
+        provider: "{{ nxos_provider }}"
+      with_items: "{{ snmp_hosts }}"
+
+    - name: Create SNMP Traps
+      nxos_snmp_traps:
+        group: "{{ item.group }}"
+        state: "{{ item.state }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ snmp_traps }}"
+
+    - name: Configure MST configuration
+      nxos_config:
+        src: mst_config.j2
+        provider: "{{ nxos_provider }}"
+
+    - name: Configure Spanning-tree Pathcost
+      nxos_config:
+        lines:
+          - 'spanning-tree pathcost method long'
+        provider: "{{ nxos_cli }}"
+
+    - name: Configure default L2 port types
+      nxos_config:
+        lines:
+          - 'spanning-tree port type edge default'
+          - 'spanning-tree port type edge bpduguard default'
+        provider: "{{ nxos_cli }}"
+
+    - name: Misc config
+      nxos_config:
+        lines:
+          - 'errdisable recovery cause bpduguard'
+          - 'errdisable recovery cause link-flap'
+          - 'snmp-server enable traps upgrade UpgradeOpNotifyOnCompletion'
+          - 'snmp-server enable traps upgrade UpgradeJobStatusNotify'
+          - 'ip arp timeout 3600'
+          - 'mac address-table aging-time 3800'
+        provider: "{{ nxos_cli }}"
+
+    - name: SNMP User setup
+      nxos_config:
+        lines:
+          - 'snmp-server user ops network-admin auth md5 0x5ddce125edb49b75149b1e91798d9917 priv 0x5ddce125edb49b75149b1e91798d9917 localizedkey'
+        provider: "{{ nxos_cli }}"
+
+    - name: Copy CoPP policy
+      nxos_config:
+        lines:
+          - 'copp copy profile strict suffix custom'
+        provider: "{{ nxos_cli }}"
+
+    - name: Modify class copp-class-management-custom
+      nxos_config:
+        lines:
+          - 'set cos 2'
+          - 'police cir 0 bps bc 0 bytes conform transmit violate drop'
+        parents:
+          - "policy-map type control-plane copp-policy-strict-custom"
+          - "class copp-class-management-custom"
+        provider: "{{ nxos_cli }}"
+
+#    - name: Set new CoPP policy
+#      nxos_config:
+#        lines:
+#          - 'service-policy input copp-policy-strict-custom'
+#        timeout: 25
+#        parents:
+#          - 'control-plane'
+#        provider: "{{ nxos_cli }}"
+
+    - name: Set CLI aliases
+      nxos_config:
+        src: cli_aliases.j2
+        provider: "{{ nxos_provider }}"
+
+# Set VTY/console configs
+    - name: Set console timeout
+      nxos_config:
+        lines:
+          - 'exec-timeout 15'
+        parents: 'line console'
+        provider: "{{ nxos_provider }}"
+
+    - name: Set vty timeout
+      nxos_config:
+        lines:
+          - 'exec-timeout 15'
+          - 'access-class ssh-only in'
+        parents: 'line vty'
+        provider: "{{ nxos_provider }}"
+
+  # Create RBAC Roles
+    - name: Create RBAC Roles
+      nxos_config:
+        src: RBAC_roles.j2
+        provider: "{{ nxos_provider }}"
+
+    - name: Set default BFD timers
+      nxos_config:
+        lines:
+          - 'bfd interval 250 min_rx 250 multiplier 3'
+        provider: "{{ nxos_provider }}"
+
+#broken
+#    - name: create BGP Connected route-map
+#      nxos_config:
+#        lines:
+#          - route-map BGP-REDIST-CONNECTED permit 10
+#          - match route-type local
+#          - route-map BGP-REDIST-CONNECTED deny 20
+#        provider: "{{ nxos_provider }}"
+
+#    - name: create Connected Prefix-list
+#      nxos_config:
+#        lines:
+#          - ip prefix-list CONNECTED seq 5 permit 10.88.144.0/24 le 32
+#          - ip prefix-list CONNECTED seq 10 permit 10.88.145.0/24 le 31
+#        provider: "{{ nxos_provider }}"
+
+#    - name: create BGP Connected route-map
+#      nxos_config:
+#        lines:
+#          -  match ip address prefix-list CONNECTED
+#        before: route-map BGP-REDIST-CONNECTED permit 10
+#        after: route-map BGP-REDIST-CONNECTED deny 20
+#        provider: "{{ nxos_provider }}"
+
+
+############################################## end base config ############################
+
+########################################L3 config ##############################################
+
+    - name: Create/Ensure BGP Process
+      nxos_config:
+        src: bgp_spine_main.j2
+        provider: "{{ nxos_provider }}"
+
+    - name: BASE NEIGHBOR CONFIG
+      nxos_config:
+       src: bgp_spine_neighbor.j2
+       provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ bgp_neighbors }}"
+
+    - name: CHANGE INFRA PORTS TO L3
+      nxos_interface:
+        interface: "{{ item.interface }}"
+        mode: layer3
+        description: "{{item.peer_row}}.{{item.peer_rack}}.{{item.peer_ru}}_{{ item.peer_name }}_{{ item.peer_port }}"
+        admin_state: up
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ l3_interfaces }}"
+
+    - name: Disable ip redirects on L3 interfaces
+      nxos_config:
+        lines:
+          - 'no ip redirects'
+        parents:
+          - 'interface {{ item.interface }}'
+        provider: "{{ nxos_provider }}"
+#      when: item is defined
+      with_items:
+        - "{{ l3_interfaces }}"
+
+    - name: Disable ip unreachables on L3 interfaces
+      nxos_config:
+        lines:
+          - 'no ip unreachables'
+        parents:
+          - 'interface {{ item.interface }}'
+        provider: "{{ nxos_provider }}"
+#      when: item is defined
+      with_items:
+        - "{{ l3_interfaces }}"
+
+    - name: Set Loopback Interfaces
+      nxos_interface:
+        interface: "{{ item.interface }}"
+        description: "{{ item.description }}"
+        admin_state: up
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ loopbacks }}"
+
+#broken
+    - name: Set MTU on L3 interfaces
+      nxos_config:
+        lines:
+          - mtu {{ item.mtu }}
+        parents: interface {{ item.interface }}
+        provider: "{{ nxos_provider }}"
+      with_items: "{{ l3_interfaces }}"
+      when: item.mtu is defined
+
+    - name: disable bfd echo on L3 interfaces
+      nxos_config:
+        lines:
+          - 'no bfd echo'
+        parents:
+          - "interface {{item.interface}}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ l3_interfaces }}"
+
+    - name: Address Loopbacks
+      nxos_ip_interface:
+        interface: "{{ item.interface }}"
+        addr: "{{ item.addr | ipaddr('address') }}"
+        mask: "{{ item.addr | ipaddr('prefix') }}"
+        tag: "{{ bgp_asn }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ loopbacks }}"
+      when: item.addr is defined
+
+    #spine is host[0], leaf is host[1]
+    - name: Address IP Infrastructure
+      nxos_ip_interface:
+        interface: "{{ item.interface }}"
+        addr: "{{ item.addr | ipaddr('net') | ipaddr('0') | ipaddr('address') }}"
+        mask: "{{ item.addr | ipaddr('prefix') }}"
+        tag: "{{ bgp_asn }}"
+        provider: "{{ nxos_provider }}"
+      with_items:
+        - "{{ l3_interfaces }}"
+      when: item.addr is defined
+
+# advertise infra IPs:
+
+    - name: Building underlay network list
+      set_fact:
+        underlay_networks: "{{ underlay_networks|default([]) + [item.addr|ipaddr('network/prefix')] }}"
+      with_items:
+        - "{{ l3_interfaces }}"
+        - "{{ loopbacks }}"
+      when: item.vrf is undefined
+
+#nxos_bgp_af broken.  applying networks w/o indepotence in bgp_leaf_main.j3 until working again.
+#    - name: Building underlay network list
+#      set_fact:
+#        underlay_networks: "{{ underlay_networks|default([]) + [[item.addr|ipaddr('network/prefix'),'']] }}"
+#      with_items:
+#        - "{{ l3_interfaces }}"
+#        - "{{ loopbacks }}"
+#      when: item.vrf is undefined
+#      tags: test
+#
+#    - name: print variable
+#      debug:
+#        msg: "{{ underlay_networks }}"
+#      tags: test
+#
+#    - name: Advertise Underlay Prefixes
+#      nxos_bgp_af:
+#        asn: "{{ bgp_asn }}"
+#        afi: ipv4
+#        safi: unicast
+#        vrf: default
+#        networks:
+#          - "{{ underlay_networks }}"
+#        provider: "{{ nxos_provider }}"
+#      with_items:
+#        - "{{ l3_interfaces }}"
+#      when: item.vrf is undefined
+#      tags: test
+#end nsos_bgp_af broken
